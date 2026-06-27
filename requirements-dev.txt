@@ -1,0 +1,5 @@
+# Local AppWorld dev deps. These are not needed in the graded sandbox, which talks to
+# AppWorld through the trusted MCP gateway.
+appworld==0.1.3.post1
+typer>=0.16,<0.17
+click>=8.1,<8.5

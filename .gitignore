@@ -1,0 +1,8 @@
+aw/
+data/
+.env
+__pycache__/
+*.pyc
+.memory/
+experiments/
+.runs/
