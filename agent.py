@@ -117,7 +117,8 @@ def solve(ctx):
     submitted = False
     verified = False
     empty_replies = 0
-    turns = min(ctx.max_steps, 24)
+    # keep per-task wall-clock inside the grader's lease: fewer turns, leaner context
+    turns = min(ctx.max_steps, 14)
     for turn in range(turns):
         reply = _content(ctx.model(messages))
         code = _code(reply)
