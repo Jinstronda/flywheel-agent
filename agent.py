@@ -18,8 +18,10 @@ SYSTEM = (
     "or reprint them, so re-derive tokens/ids you need.\n\n"
     "DECIDE THE TASK KIND FIRST:\n"
     "  QUESTION (asks for a value)  -> compute it, then apis.supervisor.complete_task(answer=VALUE).\n"
-    "  ACTION   (asks to change the world) -> mutate the world, then apis.supervisor.complete_task() "
-    "with NO answer. Returning prose for an action scores 0; returning nothing for a question scores 0.\n\n"
+    "  ACTION   (asks to change the world) -> mutate the world, then call "
+    "apis.supervisor.complete_task(answer=None). Pass None EXPLICITLY: a bare complete_task() submits "
+    "the sentinel '<<not_given>>', which the oracle REJECTS because it expects null. answer=None "
+    "serializes to null and matches. Returning prose for an action scores 0.\n\n"
     "THE LOOP:\n"
     "1) DISCOVER, never guess names: apis.api_docs.show_api_descriptions(app_name=APP) then "
     "apis.api_docs.show_api_doc(app_name=APP, api_name=API) for exact params + return shape before any write.\n"
@@ -105,9 +107,10 @@ def solve(ctx):
         f"TASK:\n{instr}\n\n"
         + (f"LEARNED FROM PRIOR TASKS (reuse, do not relearn):\n{recall}\n\n" if recall else "")
         + (f"RETRIEVED API HITS:\n{hits}\n\n" if hits else "")
-        + "Decide QUESTION vs ACTION. Write your FIRST ```python``` block: discover the right apis and run "
-        "the login flow (profile + show_account_passwords + app.login -> access_token), printing what you "
-        "need to read back."
+        + "Decide QUESTION vs ACTION. Your FIRST ```python``` block must do ONLY discovery + login: "
+        "show_profile, show_account_passwords, log into the needed app(s) for the access_token, and print "
+        "the token plus the first page of the main list you'll work over. Do NOT attempt the whole task in "
+        "block 1 -- a giant first block tends to crash on a guessed field. Keep it small; build up over turns."
     )
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -150,13 +153,16 @@ def solve(ctx):
             verified = True
             nudge = (
                 " Before finishing: re-read the world and confirm EVERY entity named in the task reached the "
-                "goal state (for a question, recompute the exact value from the last page). Then call "
-                "apis.supervisor.complete_task (answer=... only for a question)."
+                "goal state (for a question, recompute the exact value from the last page). Then finish: a "
+                "QUESTION -> complete_task(answer=VALUE); an ACTION -> complete_task(answer=None) (None explicitly, "
+                "never a bare call -- bare submits '<<not_given>>' and the oracle expects null)."
             )
         elif left <= 3:
-            nudge = " Few turns left: finish now -- verify quickly, then call apis.supervisor.complete_task."
+            nudge = (" Few turns left: finish now. QUESTION -> complete_task(answer=VALUE); "
+                     "ACTION -> complete_task(answer=None) (explicit None).")
         else:
-            nudge = " Continue with one ```python``` block; call apis.supervisor.complete_task when the world is in the goal state."
+            nudge = (" Continue with one ```python``` block. When the world is in the goal state, finish: "
+                     "QUESTION -> complete_task(answer=VALUE); ACTION -> complete_task(answer=None).")
 
         messages.append({"role": "user", "content": f"RESULT:\n{result[:3500]}\n\n{nudge}"})
 
@@ -164,15 +170,11 @@ def solve(ctx):
     if not submitted:
         ctx.reflect("forcing a final complete_task so the task is never left unsubmitted")
         try:
-            ctx.run_code(
-                "try:\n"
-                "    apis.supervisor.complete_task()\n"
-                "except Exception:\n"
-                "    apis.supervisor.complete_task(answer='')"
-            )
+            # answer=None -> null, which the oracle's answer-match expects on action tasks
+            ctx.run_code("apis.supervisor.complete_task(answer=None)")
         except Exception:
             try:
-                ctx.mcp.call("complete_task", {})
+                ctx.mcp.call("complete_task", {"answer": None})
             except Exception:
                 pass
 
