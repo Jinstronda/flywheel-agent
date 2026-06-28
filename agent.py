@@ -107,10 +107,9 @@ def solve(ctx):
         f"TASK:\n{instr}\n\n"
         + (f"LEARNED FROM PRIOR TASKS (reuse, do not relearn):\n{recall}\n\n" if recall else "")
         + (f"RETRIEVED API HITS:\n{hits}\n\n" if hits else "")
-        + "Decide QUESTION vs ACTION. Your FIRST ```python``` block must do ONLY discovery + login: "
-        "show_profile, show_account_passwords, log into the needed app(s) for the access_token, and print "
-        "the token plus the first page of the main list you'll work over. Do NOT attempt the whole task in "
-        "block 1 -- a giant first block tends to crash on a guessed field. Keep it small; build up over turns."
+        + "Decide QUESTION vs ACTION. Write your FIRST ```python``` block: discover the right apis and run "
+        "the login flow (profile + show_account_passwords + app.login -> access_token), printing what you "
+        "need to read back. Keep early blocks focused so a guessed field does not crash the whole turn."
     )
     messages = [
         {"role": "system", "content": SYSTEM},
@@ -120,8 +119,8 @@ def solve(ctx):
     submitted = False
     verified = False
     empty_replies = 0
-    # keep per-task wall-clock inside the grader's lease: fewer turns, leaner context
-    turns = min(ctx.max_steps, 14)
+    # keep per-task wall-clock inside the grader's lease while leaving room for multi-write tasks
+    turns = min(ctx.max_steps, 16)
     for turn in range(turns):
         reply = _content(ctx.model(messages))
         code = _code(reply)
@@ -133,6 +132,10 @@ def solve(ctx):
             continue
         empty_replies = 0
         messages.append({"role": "assistant", "content": reply})
+
+        # FORCE the null submit on action tasks: a bare complete_task() stores the '<<not_given>>'
+        # sentinel which the oracle rejects (it expects null). Rewriting to answer=None -> null.
+        code = re.sub(r"complete_task\(\s*\)", "complete_task(answer=None)", code)
 
         try:
             result = str(ctx.run_code(code))
